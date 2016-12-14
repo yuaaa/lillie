@@ -34,12 +34,8 @@ poke[3] = [30, 17, 23, 13,  7,  6]
 poke[4] = [31, 23,  2, 13, 20, 13]
 poke[5] = [30,  2, 26, 13, 19, 10]
 
-def pretty(str)
-	p = "HABCDS"
-	6.times do |i|
-		str.gsub!(i.to_s, p[i])
-	end
-	return str
+def pretty_pos(pos)
+	return "HABCDS"[pos]
 end
 
 #はじめの6つは mod 6、残りは mod 32 について記録している
@@ -68,34 +64,6 @@ def add_pos(pokenum, kouhonum, offset, value)
 	add_kotaiguuki(pokenum, kouhonum, offset, value %2)
 	
 end
-
-
-# HABCDS のうちどれ？（二通り考えられる場合）
-def add_pos2(pokenum, kouhonum, offset, value1, value2)
-	if  !(0<= value1 && value1 < 6 ) then
-		raise
-	end
-	if  !(0<= value2 && value2 < 6 ) then
-		raise
-	end
-	if ( value1 == value2 ) then
-		raise
-	end
-
-	@solver << [-@kanou[pokenum][kouhonum], @ransu[offset][value1], @ransu[offset][value2]]
-	6.times do |v|
-		if ( v != value1 && v != value2 ) then
-			@solver << [-@kanou[pokenum][kouhonum], -@ransu[offset][v]]
-		end
-	end
-	
-	
-	# mod 32のほうは偶奇の情報のみ。二通りの偶奇が違うなら、情報がないことになるのでとばす
-	if ( value1 %2 == value2 %2 ) then
-		add_kotaiguuki(pokenum, kouhonum, offset, value1 %2)
-	end
-end
-
 
 # どっち親からの遺伝？
 def add_oya(pokenum, kouhonum, offset, value)
@@ -199,64 +167,67 @@ for pokenum in 0...(poke.size)
 	idens.permutation(3).each{ |iden|
 	
 		(0..MAX_SUTE1).each { |first_sute| #一個目の遺伝箇所を決定した後に破棄した回数
-			(0..MAX_SUTE2).each { |second_sute| #二個目の遺伝箇所を決定した後に破棄した回数
-				
-				@kanou[pokenum].push(MiniSat::Var.new(@solver))
-				kouhonum = @kanou[pokenum].size - 1
-				
-				
-				teststring = ""
-				
-				offset = 0
-				
-				# 遺伝一個目
-				add_pos(pokenum, kouhonum, poke_offset+0, iden[0])
-				add_oya(pokenum, kouhonum, poke_offset+1, idenoya[iden[0]])
-				offset += 2
-				teststring += iden[0].to_s + idenoya[iden[0]].to_s
-				
-				# 一個目の後に捨てられる（＝一個目の遺伝箇所と同じ）
-				first_sute.times do
-					add_pos(pokenum, kouhonum, poke_offset+offset, iden[0])
-					offset += 1
-					teststring += "_"
-				end
-				
-				# 遺伝二個目
-				add_pos(pokenum, kouhonum, poke_offset+offset+0, iden[1])
-				add_oya(pokenum, kouhonum, poke_offset+offset+1, idenoya[iden[1]])
-				offset += 2
-				teststring += iden[1].to_s + idenoya[iden[1]].to_s
-				
-				# 二個目の後に捨てられる
-				second_sute.times do
-					add_pos2(pokenum, kouhonum, poke_offset+offset, iden[0], iden[1])
-					teststring += "|"
-					offset += 1
-				end
-				
-				# 遺伝三個目
-				add_pos(pokenum, kouhonum, poke_offset+offset+0, iden[2])
-				add_oya(pokenum, kouhonum, poke_offset+offset+1, idenoya[iden[2]])
-				offset += 2
-				teststring += iden[2].to_s + idenoya[iden[2]].to_s
-				
-				# 個体値の実数。遺伝済み箇所は飛ばす
-				(0...6).each { |i|
-					if !iden.include?(i) then
-						add_kotai(pokenum, kouhonum, poke_offset+offset+i, poke[pokenum][i])
-						teststring += "-+"[poke[pokenum][i]%2]
-					else
-						teststring += "."
+			(0..MAX_SUTE2).each { |second_sute| # second_sute: 二個目の遺伝箇所を決定した後に破棄した回数
+				(2**second_sute).times { |second_sute_choice| # 二個目の遺伝箇所を決定した後に破棄で、どちらを捨てたか
+					
+					@kanou[pokenum].push(MiniSat::Var.new(@solver))
+					kouhonum = @kanou[pokenum].size - 1
+					
+					
+					teststring = ""
+					
+					offset = 0
+					
+					# 遺伝一個目
+					add_pos(pokenum, kouhonum, poke_offset+0, iden[0])
+					add_oya(pokenum, kouhonum, poke_offset+1, idenoya[iden[0]])
+					offset += 2
+					teststring += pretty_pos(iden[0]) + idenoya[iden[0]].to_s
+					
+					# 一個目の後に捨てられる（＝一個目の遺伝箇所と同じ）
+					first_sute.times do
+						add_pos(pokenum, kouhonum, poke_offset+offset, iden[0])
+						offset += 1
+						teststring += pretty_pos(iden[0]).downcase
 					end
+					
+					# 遺伝二個目
+					add_pos(pokenum, kouhonum, poke_offset+offset+0, iden[1])
+					add_oya(pokenum, kouhonum, poke_offset+offset+1, idenoya[iden[1]])
+					offset += 2
+					teststring += pretty_pos(iden[1]) + idenoya[iden[1]].to_s
+					
+					# 二個目の後に捨てられる
+					second_sute.times do |ss|
+						choice = (second_sute_choice >> ss)&1 # どちらが捨てられたか？
+						add_pos(pokenum, kouhonum, poke_offset+offset, iden[choice])
+						teststring += pretty_pos(iden[choice]).downcase
+						offset += 1
+					end
+					
+					# 遺伝三個目
+					add_pos(pokenum, kouhonum, poke_offset+offset+0, iden[2])
+					add_oya(pokenum, kouhonum, poke_offset+offset+1, idenoya[iden[2]])
+					offset += 2
+					teststring += pretty_pos(iden[2]) + idenoya[iden[2]].to_s
+					
+					# 個体値の実数。遺伝済み箇所は飛ばす
+					(0...6).each { |i|
+						if !iden.include?(i) then
+							add_kotai(pokenum, kouhonum, poke_offset+offset+i, poke[pokenum][i])
+							teststring += "-+"[poke[pokenum][i]%2]
+						else
+							teststring += "."
+						end
+					}
+					offset += 6
+					if offset != teststring.size then
+						raise
+					end
+					
+					kanou_comm[pokenum].push({:text => pokenum.to_s + ": #{first_sute} #{second_sute} " + (" "*pokenum) + teststring,
+					                          :sute => [first_sute, second_sute] } )
 				}
-				offset += 6
-				if offset != teststring.size then
-					raise
-				end
-				
-				kanou_comm[pokenum].push({:text => pokenum.to_s + ": #{first_sute} #{second_sute} " + (" "*pokenum) + pretty(teststring),
-				                          :sute => [first_sute, second_sute] } )
 			}
 		}
 	
@@ -307,9 +278,9 @@ if m then
 		}
 	}
 	
-	@solver << further
+	# TODO: 30はてきとう
 	
-	str = "bitstream: "
+	str = "bit: "
 	30.times { |i|
 		may = 0
 		if m[@ransu[i][0]] || m[@ransu[i][2]] || m[@ransu[i][4]] then
@@ -331,6 +302,9 @@ if m then
 	p str
 	
 	
+	@solver << further
+	
+	
 else
 
 	if sute_kouho == -1 then
@@ -341,7 +315,7 @@ else
 	p "Finished"
 	
 	eff = 0
-	str = "bit: "
+	str = "fixed bitstream: "
 	30.times { |i|
 		str += "?01!"[bit_kouho[i]]
 		if [1,2].include?(bit_kouho[i]) then
